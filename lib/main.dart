@@ -1,13 +1,18 @@
 import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
 import 'package:flutter/material.dart';
-import 'dart:io';
-import 'package:file_picker/file_picker.dart';
+//import 'dart:io';
+//import 'package:file_picker/file_picker.dart';
 import 'package:amplify_core/amplify_core.dart';
-import 'package:amplify_storage_s3/amplify_storage_s3.dart';
+//import 'package:amplify_storage_s3/amplify_storage_s3.dart';
+import 'package:flutter_login/flutter_login.dart';
+import 'package:rflutter_alert/rflutter_alert.dart';
 import 'amplifyconfiguration.dart';
 
 void main() {
-  runApp(MyApp());
+  runApp(MaterialApp(
+    home: MyApp(),
+    routes: {},
+  ));
 }
 
 class MyApp extends StatefulWidget {
@@ -17,118 +22,105 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   bool _isAmplifyConfigured = false;
-  String _uploadFileResult = '';
-  String _getUrlResult = '';
-  String _removeResult = '';
-  Amplify amplify = new Amplify();
+
+  bool isSignUpComplete = false;
+  bool isSignedIn = false;
+
+  Amplify amplifyInstance = Amplify();
+
 
   @override
   void initState() {
     super.initState();
 
-    configureAmplify();
+    _configureAmplify();
   }
 
-  void configureAmplify() async {
-    // First add plugins (Amplify native requirements)
-    AmplifyStorageS3 storage = new AmplifyStorageS3();
-    AmplifyAuthCognito auth = new AmplifyAuthCognito();
-    amplify.addPlugin(authPlugins: [auth], storagePlugins: [storage]);
+  void _configureAmplify() async {
+    if(!mounted) return;
 
-    // Configure
-    await amplify.configure(amplifyconfig);
+    try{
+      AmplifyAuthCognito authPlugin = AmplifyAuthCognito();
 
-    setState(() {
-      _isAmplifyConfigured = true;
-    });
-  }
+      amplifyInstance.addPlugin(authPlugins: [authPlugin]);
+      await amplifyInstance.configure(amplifyconfig);
 
-  void _upload() async {
-    try {
-      print('In upload');
-      File local = await FilePicker.getFile(type: FileType.image);
-      final key = 'ExampleKey';
-      Map<String, String> metadata = <String, String>{};
-      metadata['name'] = 'smiley_face';
-      metadata['desc'] = 'A photo of a smiley face';
-      S3UploadFileOptions options = S3UploadFileOptions(
-          accessLevel: StorageAccessLevel.guest, metadata: metadata);
-      UploadFileResult result = await Amplify.Storage.uploadFile(
-          key: key, local: local, options: options);
       setState(() {
-        _uploadFileResult = result.key;
+        _isAmplifyConfigured = true;
       });
-    } catch (e) {
-      print('UploadFile Err: ' + e.toString());
+    }catch (e) {
+      print(e);
     }
   }
 
-  void getUrl() async {
-    try {
-      String key = "ExampleKey";
-      S3GetUrlOptions options = S3GetUrlOptions(
-          accessLevel: StorageAccessLevel.guest, expires: 10000);
-      GetUrlResult result =
-      await Amplify.Storage.getUrl(key: key, options: options);
+
+  // ignore: missing_return
+  Future<String> _registerUser(LoginData data) async {
+
+    try{
+      Map<String, dynamic> userAttributes = {
+        'email': data.name,
+
+      };
+
+
+
+      //name and password
+      SignUpResult res = await Amplify.Auth.signUp(username: data.name, password: data.password);
 
       setState(() {
-        _getUrlResult = result.url;
+        isSignUpComplete = res.isSignUpComplete;
+
+        print("Sign up is " + (isSignUpComplete ? "complete" : "not complete"));
       });
-    } catch (e) {
-      print('GetUrl Err: ' + e.toString());
+    } on AuthError catch(e){
+      return e.toString();
     }
   }
 
-  void _remove() async {
-    try {
-      print('In remove');
-      String key = "ExampleKey";
-      RemoveOptions options =
-      RemoveOptions(accessLevel: StorageAccessLevel.guest);
-      RemoveResult result =
-      await Amplify.Storage.remove(key: key, options: options);
 
+    // ignore: missing_return
+    Future<String> _signIn(LoginData data) async {
+    try{
+      SignInResult res = await Amplify.Auth.signIn(username: data.name, password: data.password);
       setState(() {
-        _removeResult = result.key;
+        isSignedIn = res.isSignedIn;
       });
-      print('_removeResult:' + _removeResult);
-    } catch (e) {
-      print('Remove Err: ' + e.toString());
+
+      if(isSignedIn){
+        Alert(
+          context: context,
+          type: AlertType.success,
+          title: "Login Sucessful",
+          desc: "Good job",
+        ).show();
+      }
+
+    } on AuthError catch(e){
+      Alert(context: context, type: AlertType.error,
+      title: 'Login Failed',
+      desc: e.toString(),
+      ).show();
+      return e.toString();
     }
-  }
+
+
+    }
 
 
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        appBar: AppBar(
-          title: const Text('Amplify Flutter Storage Application'),
-        ),
-        body: Center(
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            RaisedButton(
-              onPressed: _upload,
-              child: const Text('Upload File'),
-            ),
-            const Padding(padding: EdgeInsets.all(5.0)),
-            RaisedButton(
-              onPressed: _remove,
-              child: const Text('Delete File'),
-            ),
-            const Padding(padding: EdgeInsets.all(5.0)),
-            RaisedButton(
-              onPressed: getUrl,
-              child: const Text('GetUrl for uploaded File'),
-            ),
-            const Padding(padding: EdgeInsets.all(5.0)),
-            Image.network(_getUrlResult),
-          ],
+    return SafeArea(
 
-          ),
-        ),
+      child: FlutterLogin(
+        logo: 'assets/vennify media.png',
+        onLogin: _signIn,
+        onSignup: _registerUser,
+        onRecoverPassword: (_) => null,
+        title: 'Flutter Amplify',
       ),
+
     );
   }
 }
